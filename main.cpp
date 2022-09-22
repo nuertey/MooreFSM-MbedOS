@@ -1,11 +1,11 @@
 #include "mbed.h"
+#include "events/mbed_events.h"
 #include "sml.hpp" // [Boost::ext].SML
 
 #define LED_ON  1
 #define LED_OFF 0
 
 #define BLINKING_RATE 500ms
-#define SLEEPING_RATE 10s
 
 using namespace boost::sml;
 namespace sml = boost::sml;
@@ -14,6 +14,8 @@ namespace sml = boost::sml;
 // default of the STM32 microcontroller.
 InterruptIn g_UserButton(BUTTON1); 
 DigitalOut  g_LEDOne(LED1);
+
+EventQueue * g_pUserContextEventQueue = mbed_event_queue();
 
 bool g_BlinkingFlag{false};
 
@@ -106,15 +108,34 @@ using MooreFSM_t = sm<StateMachine_t, logger<DebugLogger_t> >;
 DebugLogger_t g_TheDebugLogger;
 MooreFSM_t    g_TheFSM{g_TheDebugLogger};
 
+void processEvent()
+{
+    g_TheFSM.process_event(buttonPressed{});
+}
+
 void riseHandler()
 {
-    if (g_TheFSM.is("Blink"_s)) // TBD, Nuertey Odzeyem, or it rather "On"_s ????
+    if (g_TheFSM.is("On"_s))
+    {
+        // Signal to start blinking the LED.
+        g_BlinkingFlag = true;
+    }
+    else if (g_TheFSM.is("Blink"_s))
     {
         // Signal to stop blinking the LED.
         g_BlinkingFlag = false;
     }
     
-    g_TheFSM.process_event(buttonPressed{});
+    // Transform processing from interrupt context to the main user 
+    // thread context by means of the shared event queue.
+    if (g_pUserContextEventQueue)
+    {
+        g_pUserContextEventQueue->call(processEvent);
+    }
+    else
+    {
+        printf("FATAL! g_pUserContextEventQueue() is nullptr during riseHandler()!\r\n");
+    }
 }
 
 int main()
@@ -127,11 +148,10 @@ int main()
     
     g_UserButton.rise(&riseHandler);
 
-    while (true) // Run forever.
-    {          
-        // Wait around, button interrupts will awaken us when they occur.
-        ThisThread::sleep_for(SLEEPING_RATE);
-    }
+    // Setup complete, so we now dispatch the shared queue from main().
+    // Events are executed by the dispatch_forever() method which never 
+    // returns.
+    g_pUserContextEventQueue->dispatch_forever();
     
     printf("\r\n\r\nMooreFSM-MbedOS - Exiting.\r\n\r\n");
 }
