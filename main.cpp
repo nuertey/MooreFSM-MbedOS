@@ -10,7 +10,7 @@ namespace sml = boost::sml;
 InterruptIn g_ButtonOne(SW2);
 DigitalOut  g_UserLED(LED1);
 
-bool stopBlinking{true};
+bool g_BlinkingFlag{false};
 
 // Just debug logging utilities:
 struct DebugLogger_t
@@ -42,89 +42,43 @@ struct DebugLogger_t
     }
 };
 
-namespace MyEvents
-{
-    struct startAdvertising
-    {
-    };
-    struct onAdvertisingEnd
-    {
-    };
-    //struct endAdvertising
-    //{
-    //};
-    struct onDisconnectionComplete
-    {
-    };
-    struct onScanTimeout
-    {
-    };
-    struct endScanning
-    {
-    };
-    struct onAdvertisingReport
-    {
-        ble::AdvertisingReportEvent bleEvent;
-    };
-} // namespace MyEvents
-
 namespace
 {
-    inline auto Init         = boost::sml::state<class Init>;
-    inline auto Scanning     = boost::sml::state<class Scanning>;
-
-    inline auto Disconnected = boost::sml::state<class Disconnected>;
-    inline auto Connected    = boost::sml::state<class Connected>;
-} // namespace
-
-namespace
-{
-
-} // namespace
+    struct buttonPressed
+    {
+    };
+} // FSM Event(s) unnamed namespace.
 
 namespace
 {    
-    struct do_advertise
+    struct do_light_off
     {
-        auto operator()(IBluetoothGAPApplication &application) const
+        auto operator()() const
         {
-            application.StartAdvertising();
+            g_UserLED = LED_OFF;
         }
     };
 
-    struct do_end_advertising
+    struct do_light_on
     {
-        auto operator()(IBluetoothGAPApplication &application) const
+        auto operator()() const
         {
-            printf("About to call application.StopAdvertising()...\r\n");
-            application.StopAdvertising();
+            g_UserLED = LED_ON;
         }
     };
 
-    struct do_scan
+    struct do_light_blink
     {
-        auto operator()(IBluetoothGAPApplication &application) const
+        auto operator()() const
         {
-            application.StartScanning();
+            while (g_BlinkingFlag) 
+            {
+                g_UserLED = !g_UserLED;
+                ThisThread::sleep_for(BLINKING_RATE);
+            }
         }
     };
-
-    struct do_end_scanning
-    {
-        auto operator()(IBluetoothGAPApplication &application) const
-        {
-            application.StopScanning();
-        }
-    };
-
-    struct do_connect
-    {
-        auto operator()(IBluetoothGAPApplication &application, const MyEvents::onAdvertisingReport& e) const
-        {
-            application.ConnectToCentralDevice(e.bleEvent);
-        }
-    };
-} // namespace
+} // FSM Actions unnamed namespace.
 
 struct StateMachine_t 
 {
@@ -134,13 +88,9 @@ struct StateMachine_t
         
         // clang-format off
         return make_transition_table(
-            * "Init"_s                       + event<MyEvents::startAdvertising> / do_advertise{}           = state<AdvertisingSubMachine_t>
-            , state<AdvertisingSubMachine_t> + event<MyEvents::onDisconnectionComplete> / do_end_advertising{} = state<AdvertisingSubMachine_t>
-            , state<AdvertisingSubMachine_t> + event<MyEvents::onAdvertisingEnd> / do_scan{}                = "Scanning"_s
-            , "Scanning"_s                   + event<MyEvents::onAdvertisingReport> / do_connect{}          = "Scanning"_s
-            , "Scanning"_s                   + event<MyEvents::onScanTimeout> / do_end_scanning{}           = "Scanning"_s
-            , "Scanning"_s                   + event<MyEvents::onDisconnectionComplete> / do_end_scanning{} = "Scanning"_s
-            , "Scanning"_s                   + event<MyEvents::endScanning> / do_advertise{}                = state<AdvertisingSubMachine_t>
+            * "Off"_s   + event<buttonPressed> / do_advertise{} = "On"_s
+            , "On"_s    + event<buttonPressed> / do_connect{}   = "Blink"_s
+            , "Blink"_s + event<buttonPressed> / do_advertise{} = "Off"_s
         );
         // clang-format on
     }
@@ -148,8 +98,8 @@ struct StateMachine_t
 
 using MooreFSM_t = sm<StateMachine_t, logger<DebugLogger_t> >;
 
-DebugLogger_t      g_TheDebugLogger();
-MooreFSM_t         g_TheFSM{g_TheDebugLogger};
+DebugLogger_t g_TheDebugLogger();
+MooreFSM_t    g_TheFSM{g_TheDebugLogger};
 
 void riseHandler()
 {
@@ -165,16 +115,10 @@ int main()
     printf("Built: %s, %s\n\n", __DATE__, __TIME__);
     
     g_ButtonOne.rise(&riseHandler);
-    
-    while (!stopBlinking) 
-    {
-        g_UserLED = !g_UserLED;
-        ThisThread::sleep_for(BLINKING_RATE);
-    }
 
     while (true) // Run forever.
     {          
-        // Wait around, button interrupts will interrupt this!
+        // Wait around, button interrupts will aaken us when they occur.
         ThisThread::sleep_for(SLEEPING_RATE);
     }
     
