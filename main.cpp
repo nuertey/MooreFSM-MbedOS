@@ -88,9 +88,9 @@ struct StateMachine_t
         
         // clang-format off
         return make_transition_table(
-            * "Off"_s   + event<buttonPressed> / do_advertise{} = "On"_s
-            , "On"_s    + event<buttonPressed> / do_connect{}   = "Blink"_s
-            , "Blink"_s + event<buttonPressed> / do_advertise{} = "Off"_s
+            * "Off"_s   + event<buttonPressed> / do_light_on{}    = "On"_s
+            , "On"_s    + event<buttonPressed> / do_light_blink{} = "Blink"_s
+            , "Blink"_s + event<buttonPressed> / do_light_off{}   = "Off"_s
         );
         // clang-format on
     }
@@ -103,6 +103,12 @@ MooreFSM_t    g_TheFSM{g_TheDebugLogger};
 
 void riseHandler()
 {
+    if (g_TheFSM.is("Blink"_s)) // TBD, Nuertey Odzeyem, or it rather "On"_s ????
+    {
+        // Signal to stop blinking the LED.
+        g_BlinkingFlag = false;
+    }
+    
     g_TheFSM.process_event(buttonPressed{});
 }
 
@@ -118,7 +124,7 @@ int main()
 
     while (true) // Run forever.
     {          
-        // Wait around, button interrupts will aaken us when they occur.
+        // Wait around, button interrupts will awaken us when they occur.
         ThisThread::sleep_for(SLEEPING_RATE);
     }
     
