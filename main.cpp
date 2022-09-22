@@ -1,14 +1,19 @@
 #include "mbed.h"
 #include "sml.hpp" // [Boost::ext].SML
 
+#define LED_ON  1
+#define LED_OFF 0
+
 #define BLINKING_RATE 500ms
 #define SLEEPING_RATE 10s
 
 using namespace boost::sml;
 namespace sml = boost::sml;
 
-InterruptIn g_ButtonOne(SW2);
-DigitalOut  g_UserLED(LED1);
+// Push-button B1 USER: the user button is connected to the I/O PC13 by 
+// default of the STM32 microcontroller.
+InterruptIn g_UserButton(BUTTON1); 
+DigitalOut  g_LEDOne(LED1);
 
 bool g_BlinkingFlag{false};
 
@@ -55,7 +60,7 @@ namespace
     {
         auto operator()() const
         {
-            g_UserLED = LED_OFF;
+            g_LEDOne = LED_OFF;
         }
     };
 
@@ -63,7 +68,7 @@ namespace
     {
         auto operator()() const
         {
-            g_UserLED = LED_ON;
+            g_LEDOne = LED_ON;
         }
     };
 
@@ -73,7 +78,7 @@ namespace
         {
             while (g_BlinkingFlag) 
             {
-                g_UserLED = !g_UserLED;
+                g_LEDOne = !g_LEDOne;
                 ThisThread::sleep_for(BLINKING_RATE);
             }
         }
@@ -98,7 +103,7 @@ struct StateMachine_t
 
 using MooreFSM_t = sm<StateMachine_t, logger<DebugLogger_t> >;
 
-DebugLogger_t g_TheDebugLogger();
+DebugLogger_t g_TheDebugLogger;
 MooreFSM_t    g_TheFSM{g_TheDebugLogger};
 
 void riseHandler()
@@ -120,7 +125,7 @@ int main()
 #endif
     printf("Built: %s, %s\n\n", __DATE__, __TIME__);
     
-    g_ButtonOne.rise(&riseHandler);
+    g_UserButton.rise(&riseHandler);
 
     while (true) // Run forever.
     {          
